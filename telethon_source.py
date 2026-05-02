@@ -12,11 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import io
-import json
 import logging
 import os
-import time
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aiogram import Bot
@@ -40,28 +37,6 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
-DEBUG_LOG_PATH = Path("/Users/codenia-tb/Projects/telegram-bot/.cursor/debug-d48042.log")
-
-
-# region agent log
-def _debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: dict) -> None:
-    try:
-        payload = {
-            "sessionId": "d48042",
-            "runId": run_id,
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
-    except Exception:
-        pass
-
-
-# endregion
 
 ALBUM_DEBOUNCE_SEC = 0.45
 
@@ -415,79 +390,22 @@ async def _edit_telethon_message(bot: Bot, msg: Any, db: MirrorDB) -> None:
 
 async def run_telethon_listener(bot: Bot, db: MirrorDB, runtime: Any) -> None:
     """Connect Telethon and process source-channel updates until disconnect."""
-    run_id = f"run-{int(time.time())}"
     api_id = int(os.getenv("TELEGRAM_API_ID", "0"))
     api_hash = os.getenv("TELEGRAM_API_HASH", "").strip()
     session_path = os.getenv("TELETHON_SESSION", "telethon.session").strip()
-    session_exists = Path(session_path).exists()
-    # region agent log
-    _debug_log(
-        run_id,
-        "H2_H4_H5",
-        "telethon_source.py:run_telethon_listener:config",
-        "telethon listener config snapshot",
-        {
-            "api_id_present": bool(api_id),
-            "api_hash_present": bool(api_hash),
-            "session_path": session_path,
-            "session_exists": session_exists,
-            "phone_present": bool(os.getenv("TELEGRAM_PHONE")),
-            "password_present": bool(os.getenv("TELEGRAM_PASSWORD")),
-        },
-    )
-    # endregion
 
     if not api_id or not api_hash:
-        # region agent log
-        _debug_log(
-            run_id,
-            "H2",
-            "telethon_source.py:run_telethon_listener:missing_config",
-            "telethon missing API config",
-            {},
-        )
-        # endregion
         logger.error("Telethon mode requires TELEGRAM_API_ID and TELEGRAM_API_HASH")
         return
 
     client = TelegramClient(session_path, api_id, api_hash)
 
-    # region agent log
-    _debug_log(
-        run_id,
-        "H2_H4_H5",
-        "telethon_source.py:run_telethon_listener:before_start",
-        "calling Telethon client.start",
-        {},
+    await client.start(
+        phone=os.getenv("TELEGRAM_PHONE"),
+        password=os.getenv("TELEGRAM_PASSWORD"),
     )
-    # endregion
-    try:
-        await client.start(
-            phone=os.getenv("TELEGRAM_PHONE"),
-            password=os.getenv("TELEGRAM_PASSWORD"),
-        )
-    except Exception as exc:
-        # region agent log
-        _debug_log(
-            run_id,
-            "H2_H4_H5",
-            "telethon_source.py:run_telethon_listener:start_exception",
-            "Telethon client.start failed",
-            {"exc_type": type(exc).__name__, "exc": str(exc)},
-        )
-        # endregion
-        raise
 
     logger.info("Telethon user session connected (session=%s)", session_path)
-    # region agent log
-    _debug_log(
-        run_id,
-        "H2_H4",
-        "telethon_source.py:run_telethon_listener:connected",
-        "Telethon user session connected",
-        {"session_path": session_path},
-    )
-    # endregion
 
     @client.on(events.NewMessage)
     async def on_new(event: Any) -> None:

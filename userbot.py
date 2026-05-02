@@ -2,13 +2,20 @@ import asyncio
 import logging
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 from telethon import TelegramClient, events
+from telethon.errors import (
+    AuthKeyDuplicatedError,
+    AuthKeyInvalidError,
+    AuthKeyUnregisteredError,
+)
 from telethon.tl.custom import Message
 from dotenv import load_dotenv
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
+
 load_dotenv(_SCRIPT_DIR / ".env")
 
 API_ID = os.getenv("TELEGRAM_API_ID")
@@ -127,7 +134,26 @@ async def main():
     )
     logger.info("DB: %s | session: %s", DB_PATH, SESSION_PATH)
 
-    await client.run_until_disconnected()
+    try:
+        await client.run_until_disconnected()
+    except (AuthKeyUnregisteredError, AuthKeyInvalidError, AuthKeyDuplicatedError) as e:
+        _base = Path(SESSION_PATH).name
+        logger.error(
+            "Telegram rejected this session (%s). Revoked keys often happen after "
+            "'Terminate other sessions', a second Telethon/Telegram client on the same file, "
+            "or moderation. Stop other bots using this account; delete `%s` plus `%s-journal`, "
+            "`%s-wal`, `%s-shm` if present; then run again to sign in.",
+            type(e).__name__,
+            SESSION_PATH,
+            _base,
+            _base,
+            _base,
+        )
+        try:
+            await client.disconnect()
+        except Exception:
+            logger.exception("disconnect() after auth error failed (ignored)")
+        sys.exit(2)
 
 
 if __name__ == "__main__":
