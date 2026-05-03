@@ -61,19 +61,49 @@ class MirrorDB:
                     "SELECT target_chat_id, target_msg_id FROM message_map WHERE source_id = ?", (source_id,)
                 ).fetchall()
 
+    async def get_target_message_id(self, source_id: int, target_chat_id: int) -> int | None:
+        async with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                row = conn.execute(
+                    "SELECT target_msg_id FROM message_map WHERE source_id = ? AND target_chat_id = ?",
+                    (source_id, target_chat_id),
+                ).fetchone()
+                return int(row[0]) if row else None
+
 
 def register_handlers(client: TelegramClient, db: MirrorDB, source_id: int, target_id: int):
     @client.on(events.NewMessage(chats=source_id))
     async def on_new_message(event):
         msg: Message = event.message
         try:
+            source_reply_id = getattr(msg, "reply_to_msg_id", None)
+            target_reply_id = None
+            if source_reply_id:
+                target_reply_id = await db.get_target_message_id(source_reply_id, target_id)
+                if target_reply_id:
+                    logger.info(
+                        "Resolved reply mapping src_reply=%s -> tgt_reply=%s",
+                        source_reply_id,
+                        target_reply_id,
+                    )
+                else:
+                    logger.warning(
+                        "Reply mapping missing for src_reply=%s (sending without reply link)",
+                        source_reply_id,
+                    )
+
             if msg.media:
                 copied = await client.send_file(
-                    target_id, msg.media, caption=msg.message or None
+                    target_id,
+                    msg.media,
+                    caption=msg.message or None,
+                    reply_to=target_reply_id,
                 )
             else:
                 copied = await client.send_message(
-                    target_id, msg.text or msg.message or ""
+                    target_id,
+                    msg.text or msg.message or "",
+                    reply_to=target_reply_id,
                 )
             await db.set_mapping(msg.id, target_id, copied.id)
             logger.info("Copied src=%s -> tgt=%s:%s", msg.id, target_id, copied.id)
