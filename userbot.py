@@ -27,7 +27,22 @@ TARGET_CHANNEL_ID = os.getenv("TARGET_CHANNEL_ID")
 SESSION_PATH = os.getenv("TELETHON_SESSION") or str(_SCRIPT_DIR / "telethon.session")
 DB_PATH = _SCRIPT_DIR / "message_map.db"
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+_background_flag = (
+    os.getenv("USERBOT_BACKGROUND", "").strip().lower() in ("1", "true", "yes")
+)
+if _background_flag:
+    _log_dir = _SCRIPT_DIR / "logs"
+    _log_dir.mkdir(exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        filename=str(_log_dir / "userbot.log"),
+        filemode="a",
+    )
+else:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+    )
 logger = logging.getLogger(__name__)
 
 
